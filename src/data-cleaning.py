@@ -188,8 +188,14 @@ print("After removing punctuations the text is:-\n{}".format(email_df['Cleaned_e
 # final cleaned data
 print(email_df[['Full_email', 'Cleaned_email']].head()) 
 
+# drop intermediate date columns and full_email if not needed
+email_df.drop(columns=['body','subject','subject_date', 'body_date', 'Full_email'], inplace=True)
+
 # save full_email and cleaned_email to a new CSV file
-email_df[['Full_email', 'Cleaned_email']].to_csv('C:\\Users\\Surface\\OneDrive\\Documentos\\GitHub\\Spam_sentiment_prediction\\data\\Full_and_Cleaned_Enron.csv', index=False)
+# email_df[['Full_email', 'Cleaned_email']].to_csv('C:\\Users\\Surface\\OneDrive\\Documentos\\GitHub\\Spam_sentiment_prediction\\data\\Full_and_Cleaned_Enron.csv', index=False)
+
+# columns of the cleaned dataframe
+print(email_df.columns)
 
 # save cleaned data to a new CSV file
 email_df.to_csv('C:\\Users\\Surface\\OneDrive\\Documentos\\GitHub\\Spam_sentiment_prediction\\data\\Cleaned_Enron.csv', index=False)
