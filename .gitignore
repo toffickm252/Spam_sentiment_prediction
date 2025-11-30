@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 # Data files (CSVs, DBs, models, etc.)
-# /data/*.csv
+/data/*.csv
 /data/*.db
 /data/*.pkl
 /data/*.h5
@@ -174,4 +174,10 @@ tmp/
 # Full_and_Cleaned_Enron.csv
 
 # Ignore all CSV files
-# *.csv
+*.csv
+
+# Data files
+data/*.csv
+data/*.db
+*.csv
+*.db
