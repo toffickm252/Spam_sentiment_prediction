@@ -2,113 +2,132 @@ import re
 import pandas as pd
 import nltk
 from nltk.corpus import stopwords
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
 
 # Download stopwords
 nltk.download('stopwords', quiet=True)
 
-# Load data
-email_df = pd.read_csv('C:\\Users\\Surface\\OneDrive\\Documentos\\GitHub\\Spam_sentiment_prediction\\data\\Enron.csv')
+# --- 1. GLOBAL CONFIGURATION & OPTIMIZATIONS ---
 
-# Explore data
-print(email_df.head())
-print(email_df.info())
-print(f"Duplicates: {email_df.duplicated().sum()}")
+# Define Contractions Dictionary
+contractions = {
+    "can't": "cannot", "won't": "will not", "n't": " not",
+    "'re": " are", "'s": " is", "'ll": " will", "'ve": " have",
+    "'m": " am", "gonna": "going to", "wanna": "want to"
+}
 
-# Extract dates from text
+# Compile Regex Pattern for Contractions (Efficient one-pass replacement)
+contractions_pattern = re.compile('|'.join(map(re.escape, contractions.keys())))
+
+# Define Slang Dictionary
+slang = {
+    "brb": "be right back", "lol": "laughing out loud",
+    "idk": "i do not know", "btw": "by the way",
+    "fyi": "for your information", "omg": "oh my god"
+}
+
+# Define Stopwords globally
+stop_words = set(stopwords.words('english'))
+
+
+# --- 2. DATA LOADING & SETUP ---
+
+# Use relative paths for portability
+base_dir = os.getcwd()
+data_path = os.path.join(base_dir, 'data', 'Enron.csv')
+output_path = os.path.join(base_dir, 'data', 'Full_and_Cleaned_Enron.csv')
+figure_path = os.path.join(base_dir, 'figures', 'balanced_distribution.png')
+
+# Handle potential encoding errors
+try:
+    email_df = pd.read_csv(data_path, encoding='latin-1') 
+except FileNotFoundError:
+    print(f"Error: File not found at {data_path}. Check your working directory.")
+    exit()
+
+
+# --- 3. DATA BALANCING ---
+
+ham_msg = email_df[email_df['label'] == 'ham']
+spam_msg = email_df[email_df['label'] == 'spam']
+
+# Safer sampling: use the minimum length of either class
+min_sample = min(len(ham_msg), len(spam_msg))
+ham_msg_balanced = ham_msg.sample(n=min_sample, random_state=42)
+spam_msg_balanced = spam_msg.sample(n=min_sample, random_state=42)
+
+balanced_data = pd.concat([ham_msg_balanced, spam_msg_balanced]).reset_index(drop=True)
+
+# Visualize
+sns.countplot(x='label', data=balanced_data)
+plt.title("Balanced Distribution")
+os.makedirs(os.path.dirname(figure_path), exist_ok=True) # Ensure folder exists
+plt.savefig(figure_path)
+plt.close()
+
+
+# --- 4. FEATURE EXTRACTION ---
+
 def extract_date(text):
-    """Extract date from text in common formats."""
-    if not isinstance(text, str):
-        return None
-    
-    # Month name format: "May 25, 2001"
-    match = re.search(r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\s*,?\s*\d{4}', 
-                      text, re.IGNORECASE)
-    if match:
-        return match.group(0)
-    
-    # Numeric format: "05/29/2001"
+    if not isinstance(text, str): return None
+    # Month name format
+    match = re.search(r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\s*,?\s*\d{4}', text, re.IGNORECASE)
+    if match: return match.group(0)
+    # Numeric format
     match = re.search(r'\d{1,2}/\d{1,2}/\d{2,4}', text)
-    if match:
-        return match.group(0)
-    
+    if match: return match.group(0)
     return None
 
-# Extract dates
-email_df['final_date'] = email_df['subject'].apply(extract_date).combine_first(
-    email_df['body'].apply(extract_date))
+balanced_data['final_date'] = balanced_data['subject'].apply(extract_date).combine_first(balanced_data['body'].apply(extract_date))
+balanced_data['full_email'] = balanced_data['subject'].fillna('') + ' ' + balanced_data['body'].fillna('')
 
-# Combine subject and body
-email_df['full_email'] = email_df['subject'].fillna('') + ' ' + email_df['body'].fillna('')
 
-# Clean text function
+# --- 5. TEXT CLEANING ---
+
 def clean_text(text):
-    """Comprehensive text cleaning."""
-    # Remove HTML tags
-    text = re.sub(r'<.*?>', '', text)
+    """Comprehensive text cleaning using global patterns."""
     
-    # Remove URLs
-    text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-    
-    # Remove hashtags and special characters
-    text = re.sub(r'#\S+', '', text)
-    text = re.sub(r'[^A-Za-z\s]', '', text)
-    
-    # Convert to lowercase
+    # 1. Lowercase
     text = text.lower()
     
-    # Expand common contractions
-    contractions = {
-        "can't": "cannot", "won't": "will not", "n't": " not",
-        "'re": " are", "'s": " is", "'ll": " will", "'ve": " have",
-        "'m": " am", "gonna": "going to", "wanna": "want to"
-    }
-    for contraction, expansion in contractions.items():
-        text = text.replace(contraction, expansion)
+    # 2. Expand Contractions (Using pre-compiled global pattern)
+    text = contractions_pattern.sub(lambda match: contractions[match.group(0)], text)
+
+    # 3. Remove HTML, URLs, Hashtags
+    text = re.sub(r'<.*?>', '', text)
+    text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'#\S+', '', text)
+
+    # 4. Remove special characters (punctuation)
+    # Note: Done AFTER contractions so we don't break "can't" -> "cant"
+    text = re.sub(r'[^A-Za-z\s]', '', text)
     
-    # Replace common slang
-    slang = {
-        "brb": "be right back", "lol": "laughing out loud",
-        "idk": "i do not know", "btw": "by the way",
-        "fyi": "for your information", "omg": "oh my god"
-    }
+    # 5. Handle Slang (Using global dictionary)
     words = text.split()
     text = ' '.join([slang.get(word, word) for word in words])
     
-    # Standardize repeated characters (e.g., "hellooo" -> "helloo")
+    # 6. Standardize repeated characters
     text = re.sub(r'(.)\1{2,}', r'\1\1', text)
     
-    # Remove stopwords
-    stop_words = set(stopwords.words('english'))
+    # 7. Remove stopwords (Using global set)
     words = [word for word in text.split() if word not in stop_words]
     text = ' '.join(words)
     
-    # Remove extra whitespace
+    # 8. Remove extra whitespace
     text = re.sub(r'\s+', ' ', text).strip()
     
     return text
 
-# Apply cleaning
-email_df['cleaned_email'] = email_df['full_email'].apply(clean_text)
+print("Cleaning text... (this may take a moment)")
+balanced_data['cleaned_email'] = balanced_data['full_email'].apply(clean_text)
 
-# Display results
-print("\nCleaning sample:")
-print(email_df[['full_email', 'cleaned_email']].head())
 
-# Keep only necessary columns
-email_df = email_df[['final_date', 'cleaned_email', 'label']]
+# --- 6. SAVE RESULTS ---
 
-# Save cleaned data
-output_path = 'C:\\Users\\Surface\\OneDrive\\Documentos\\GitHub\\Spam_sentiment_prediction\\data\\Cleaned_Enron.csv'
+balanced_data = balanced_data[['final_date', 'cleaned_email', 'label']]
 
-try:
-    email_df.to_csv(output_path, index=False)
-    print(f"\nCleaned data saved to: {output_path}")
-except PermissionError:
-    # Try alternative filename if file is locked
-    import os
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    alt_path = output_path.replace('.csv', f'_{timestamp}.csv')
-    email_df.to_csv(alt_path, index=False)
-    print(f"\nOriginal file was locked. Saved to: {alt_path}")
-    print("Please close the file if it's open and rename it manually.")
+
+balanced_data.to_csv(output_path, index=False)
+print(f"Done! Cleaned data saved to: {output_path}")    
