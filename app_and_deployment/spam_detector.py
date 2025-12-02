@@ -1,5 +1,6 @@
 import joblib
 import os
+from text_preprocessing import clean_email
 
 class SpamDetector:
     """
@@ -43,8 +44,10 @@ class SpamDetector:
                 'message': 'Empty email provided'
             }
         
+        # First, clean the email text
+        cleaned_email = clean_email(email_text)
         # Convert the email text to numbers
-        email_vectorized = self.vectorizer.transform([email_text])
+        email_vectorized = self.vectorizer.transform([cleaned_email])
         
         # Get the prediction (0 or 1)
         prediction = self.model.predict(email_vectorized)[0]
