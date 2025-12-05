@@ -1,8 +1,11 @@
 import joblib
 import os
 from text_preprocessing import clean_email
+from textblob import TextBlob
+import re
 
-class SpamDetector:
+
+class EmailAnalyzer:
     """
     A reusable spam detection tool.
     
@@ -28,6 +31,21 @@ class SpamDetector:
         self.vectorizer = joblib.load(vectorizer_path)
         print("Spam detector ready!\n")
     
+    def interpret_sentiment(self, polarity):
+        """
+        Internal function to interpret sentiment polarity.
+        """
+        if polarity >= 0.6:
+            return 'Very Positive (Excited/Enthusiastic)'
+        elif polarity >= 0.3:
+            return 'Positive (Happy/Pleased)'
+        elif polarity >= -0.1:
+            return 'Slightly Positive (Content/Optimistic)'
+        elif polarity > -0.5:
+            return 'Slightly Negative (Disappointed/Unhappy)'
+        else: 
+            return 'Very Negative (Angry/Upset)'
+    
     def check_email(self, email_text):
         """
         Check if a single email is spam.
@@ -51,17 +69,48 @@ class SpamDetector:
         
         # Get the prediction (0 or 1)
         prediction = self.model.predict(email_vectorized)[0]
-        
+
+        # probabilities = self.model.predict_proba(email_vectorized)[0]
+
+        # spam_score = probabilities[1]
+        # threshold = 0.75
+
+        # # Recalculate prediction based on threshold
+        # prediction = 1 if spam_score >= threshold else 0
+
+        # Initialize sentiment_result to None
+        sentiment_result = None
+
+        # Only analyze sentiment if NOT spam
+        if prediction == 0:
+            blob = TextBlob(email_text)
+            sentiment = blob.sentiment
+            sentiment_result = {
+                'polarity': float(sentiment.polarity),
+                'subjectivity': float(sentiment.subjectivity),
+                'interpretation': self.interpret_sentiment(sentiment.polarity)
+            }
+
         # Get the confidence scores
         probabilities = self.model.predict_proba(email_vectorized)[0]
         
+
+        # print("\n--- DEBUG ---")
+        # print("Original:", email_text[:60])
+        # print("Cleaned:", cleaned_email[:60])
+        # print("Prediction:", prediction)
+        # print("Probabilities:", probabilities)
+        # print("Sentiment:", sentiment_result)
+        # print("--- END DEBUG ---\n")
+
         # Package everything into a dictionary that's easy to understand
         return {
             'is_spam': bool(prediction == 1),
             'label': 'SPAM' if prediction == 1 else 'NOT SPAM',
             'confidence': float(max(probabilities) * 100),
             'spam_probability': float(probabilities[1] * 100),
-            'not_spam_probability': float(probabilities[0] * 100)
+            'not_spam_probability': float(probabilities[0] * 100),
+            'sentiment': sentiment_result if prediction == 0 else None
         }
     
     def check_multiple_emails(self, email_list):
@@ -77,7 +126,7 @@ class SpamDetector:
 # This part only runs if you run this file directly (not if you import it)
 if __name__ == "__main__":
     # Create the detector (this loads the model)
-    detector = SpamDetector()
+    detector = EmailAnalyzer()
     
     # Test it with a few different emails
     test_emails = [
@@ -95,4 +144,8 @@ if __name__ == "__main__":
         print(f"\nEmail {i}:")
         print(f"Text: {email[:60]}...")
         print(f"Result: {result['label']} (Confidence: {result['confidence']:.1f}%)")
+        
+        if result['sentiment']:
+            print(f"Sentiment: {result['sentiment']['interpretation']}")
+            print(f"  Polarity: {result['sentiment']['polarity']:.2f}, Subjectivity: {result['sentiment']['subjectivity']:.2f}")
         print("-" * 70)
